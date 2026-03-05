@@ -426,9 +426,14 @@ class LayoutStore: ObservableObject {
     
     @Published var activeLayouts: [String: UUID] = [:] {
         didSet {
-            pushToZoneManager()
+            if !isInitializing {
+                pushToZoneManager()
+                save()
+            }
         }
     }
+    
+    private var isInitializing = true
     
     func pushToZoneManager() {
         var newLayoutsByScreen: [String: LayoutConfiguration] = [:]
@@ -443,8 +448,10 @@ class LayoutStore: ObservableObject {
     
     @Published var isPaddingEnabled: Bool = false {
         didSet {
-            ZoneManager.shared.padding = isPaddingEnabled ? 16.0 : 0.0
-            save()
+            if !isInitializing {
+                ZoneManager.shared.padding = isPaddingEnabled ? 16.0 : 0.0
+                save()
+            }
         }
     }
     
@@ -461,9 +468,12 @@ class LayoutStore: ObservableObject {
     
     init() {
         load()
+        isInitializing = false
     }
     
     func save() {
+        if isInitializing { return }
+        
         let defaults = UserDefaults.standard
         if let encoded = try? JSONEncoder().encode(activeLayouts) {
             defaults.set(encoded, forKey: "ActiveLayoutsDict")
@@ -486,14 +496,39 @@ class LayoutStore: ObservableObject {
             self.customLayouts = decoded
         }
         
-        if let data = defaults.data(forKey: "ActiveLayoutsDict"),
-           let dict = try? JSONDecoder().decode([String: UUID].self, from: data) {
-            self.activeLayouts = dict
-            pushToZoneManager()
+        if let data = defaults.data(forKey: "ActiveLayoutsDict") {
+            if let dict = try? JSONDecoder().decode([String: UUID].self, from: data) {
+                 
+                // Self-heal: remove any outdated/random UUIDs that don't match our current templates/custom layouts
+                var validDict: [String: UUID] = [:]
+                let allLayouts = templates + customLayouts
+                for (screen, uuid) in dict {
+                    if allLayouts.contains(where: { $0.id == uuid }) {
+                        validDict[screen] = uuid
+                    }
+                }
+                
+                self.activeLayouts = validDict
+                
+                if self.activeLayouts.isEmpty {
+                    if let mainScreen = NSScreen.main?.localizedName {
+                        if let defaultTemplateId = templates.first?.id {
+                            self.activeLayouts = [mainScreen: defaultTemplateId]
+                        }
+                    }
+                }
+                pushToZoneManager()
+                
+            }
         } else if let activeStr = defaults.string(forKey: "ActiveLayoutID"), let activeUUID = UUID(uuidString: activeStr) {
             // Migrate old global setting to current primary screen
             if let mainScreen = NSScreen.main?.localizedName {
-                self.activeLayouts = [mainScreen: activeUUID]
+                let allLayouts = templates + customLayouts
+                if allLayouts.contains(where: { $0.id == activeUUID }) {
+                    self.activeLayouts = [mainScreen: activeUUID]
+                } else if let defaultTemplateId = templates.first?.id {
+                    self.activeLayouts = [mainScreen: defaultTemplateId]
+                }
                 pushToZoneManager()
             }
         } else {
