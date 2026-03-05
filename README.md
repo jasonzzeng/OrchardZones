@@ -8,8 +8,15 @@ This is a native macOS alternative to Microsoft PowerToys FancyZones, written in
 - macOS 12+ (Apple Silicon supported natively)
 - Xcode Command Line Tools installed (run `xcode-select --install` in your terminal if you haven't already).
 
-## Building and Running
+## Installation
 
+### Option 1: Download Pre-Compiled App (Recommended)
+1. Go to the [Releases](https://github.com/jasonzzeng/OrchardZones/releases) page.
+2. Download the `OrchardZones.app.zip` file from the latest release.
+3. Extract the zip file and drag `OrchardZones.app` to your `Applications` folder.
+4. If you get a warning that the app cannot be opened because the developer cannot be verified, `Right-Click` the app icon, select `Open`, and click `Open` again in the dialog.
+
+### Option 2: Build from Source
 1. Open Terminal on your Mac.
 2. Navigate to the folder containing this `Package.swift` file.
 3. Build the executable:
