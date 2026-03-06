@@ -32,9 +32,17 @@ class AccessibilityHelper {
     }
     
     // Sets the frame (position and size) of the given window
-    static func setWindowFrame(_ window: AXUIElement, frame: CGRect) {
-        var position = frame.origin
-        var size = frame.size
+    static func setWindowFrame(_ window: AXUIElement, appKitFrame: CGRect) {
+        // Convert AppKit (bottom-left) to Carbon (top-left) coordinates for Accessibility API
+        // The primary screen's top-left is (0,0) in Accessibility API
+        var carbonFrame = appKitFrame
+        if let primaryScreen = NSScreen.screens.first {
+            let globalHeight = primaryScreen.frame.height
+            carbonFrame.origin.y = globalHeight - appKitFrame.origin.y - appKitFrame.size.height
+        }
+        
+        var position = carbonFrame.origin
+        var size = carbonFrame.size
         
         let positionValue = AXValueCreate(AXValueType.cgPoint, &position)!
         let sizeValue = AXValueCreate(AXValueType.cgSize, &size)!
@@ -53,8 +61,8 @@ class AccessibilityHelper {
         Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
             attempts += 1
             
-            var currentPos = frame.origin
-            var currentSize = frame.size
+            var currentPos = carbonFrame.origin
+            var currentSize = carbonFrame.size
             let posVal = AXValueCreate(AXValueType.cgPoint, &currentPos)!
             let sizeVal = AXValueCreate(AXValueType.cgSize, &currentSize)!
             
@@ -66,7 +74,8 @@ class AccessibilityHelper {
                 
                 // If Accessibility failed or was ignored, fallback to AppleScript bounds manipulation
                 // which often forcefully overrides Electron's internal restrictions
-                fallbackToAppleScript(window: window, frame: frame)
+                // Note: AppleScript also expects Carbon coordinates
+                fallbackToAppleScript(window: window, frame: carbonFrame)
             }
         }
     }

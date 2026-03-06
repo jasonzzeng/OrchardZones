@@ -58,25 +58,36 @@ class ZoneManager {
             // When padding is 0, windows will snap completely flush to edges.
             
             // Convert relative (0.0 - 1.0) coordinates to absolute screen points
-            let absoluteX = screenRect.minX + padding + (relativeRect.minX * (screenRect.width - padding * 2))
-            let absoluteY = screenRect.minY + padding + (relativeRect.minY * (screenRect.height - padding * 2))
-            
-            // Width and height need to dynamically expand based on layout constraints without overlaps.
-            // A simple implementation for padding is to subtract the padding from the computed absolute dimensions.
-            // This assumes relativeRect values sum exactly to 1.0 across the screen.
-            let computedWidth = relativeRect.width * (screenRect.width - padding)
-            let computedHeight = relativeRect.height * (screenRect.height - padding)
-            
-            // Distribute padding
-            // For a robust implementation handling N splits with exact padding:
-            let startX = screenRect.minX + (relativeRect.minX * screenRect.width)
-            let startY = screenRect.minY + (relativeRect.minY * screenRect.height)
-            let boxWidth = relativeRect.width * screenRect.width
-            let boxHeight = relativeRect.height * screenRect.height
+            let absoluteX = screenRect.minX + (relativeRect.minX * screenRect.width)
+            let absoluteY = screenRect.minY + (relativeRect.minY * screenRect.height)
+            let computedWidth = relativeRect.width * screenRect.width
+            let computedHeight = relativeRect.height * screenRect.height
             
             // Inset the physical box by the configured padding
-            let zoneRect = CGRect(x: startX, y: startY, width: boxWidth, height: boxHeight)
+            var zoneRect = CGRect(x: absoluteX, y: absoluteY, width: computedWidth, height: computedHeight)
                 .insetBy(dx: padding / 2.0, dy: padding / 2.0)
+                
+            // Convert AppKit (bottom-left) to Carbon (top-left) coordinates for Accessibility API
+            // The primary screen's top-left is (0,0) in Accessibility API
+            let globalHeight = NSScreen.screens[0].frame.height
+            zoneRect.origin.y = globalHeight - zoneRect.origin.y - zoneRect.height
+            
+            // DIAGNOSTICS FOR ELECTRON Vertical MONITOR BEHAVIOR
+            let logPath = "/tmp/oz_zone_math.txt"
+            let logMsg = """
+            --- SNAPPING MATH ---
+            Screen: \(screen.localizedName)
+            AppKit Origin: \(absoluteX), \(absoluteY)
+            Carbon Rect: \(zoneRect)
+            """
+            
+            if let fileHandle = FileHandle(forWritingAtPath: logPath) {
+                fileHandle.seekToEndOfFile()
+                fileHandle.write((logMsg + "\n").data(using: .utf8)!)
+                fileHandle.closeFile()
+            } else {
+                try? (logMsg + "\n").write(toFile: logPath, atomically: true, encoding: .utf8)
+            }
             
             zones.append(Zone(index: index, rect: zoneRect))
         }

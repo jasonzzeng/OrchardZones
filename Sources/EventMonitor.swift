@@ -59,7 +59,7 @@ class EventMonitor {
         if isDragging {
             if showZones, let window = draggedWindow, let zone = activeZone {
                 // Snap the window to the target zone
-                AccessibilityHelper.setWindowFrame(window, frame: zone.getCarbonRect())
+                AccessibilityHelper.setWindowFrame(window, appKitFrame: zone.getCarbonRect())
             }
             
             // Reset state
