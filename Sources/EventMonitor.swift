@@ -41,7 +41,7 @@ class EventMonitor {
         if !isDragging {
             // First drag event, get the window under the cursor
             isDragging = true
-            draggedWindow = AccessibilityHelper.getFocusedWindow()
+            draggedWindow = AccessibilityHelper.getWindowUnderMouse()
         }
         
         // We require Shift to be held down to show the zones

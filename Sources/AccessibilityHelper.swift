@@ -31,6 +31,42 @@ class AccessibilityHelper {
         return (focusedWindow as! AXUIElement)
     }
     
+    // Returns the window directly under the mouse using Accessibility element hit testing
+    static func getWindowUnderMouse() -> AXUIElement? {
+        let systemWide = AXUIElementCreateSystemWide()
+        let mouseLocation = NSEvent.mouseLocation
+        
+        // Convert AppKit mouse coordinates to Carbon coordinates
+        let screenHeight = NSScreen.screens[0].frame.height
+        let carbonY = screenHeight - mouseLocation.y
+        let carbonPoint = CGPoint(x: mouseLocation.x, y: carbonY)
+        
+        var elementRef: AXUIElement?
+        if AXUIElementCopyElementAtPosition(systemWide, Float(carbonPoint.x), Float(carbonPoint.y), &elementRef) == .success {
+            guard let element = elementRef else { return getFocusedWindow() }
+            
+            // Traverse up the accessibility tree to find the window
+            var currentElement = element
+            var role: CFTypeRef?
+            
+            while AXUIElementCopyAttributeValue(currentElement, kAXRoleAttribute as CFString, &role) == .success {
+                if let roleStr = role as? String, roleStr == kAXWindowRole {
+                    return currentElement
+                }
+                var parentRef: CFTypeRef?
+                if AXUIElementCopyAttributeValue(currentElement, kAXParentAttribute as CFString, &parentRef) == .success,
+                   let parent = parentRef {
+                    currentElement = parent as! AXUIElement
+                } else {
+                    break
+                }
+            }
+        }
+        
+        // Fallback to focused window if hit testing fails
+        return getFocusedWindow()
+    }
+    
     // Sets the frame (position and size) of the given window
     // Assumes `carbonFrame` has already been translated from AppKit geometry
     static func setWindowFrame(_ window: AXUIElement, appKitFrame carbonFrame: CGRect) {
@@ -45,6 +81,16 @@ class AccessibilityHelper {
             if let sizeAXValue = AXValueCreate(.cgSize, &sizeValue) {
                 AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeAXValue)
             }
+        }
+        
+        // Immediate synchronous application of bounds for the first main thread tick 
+        var initialPos = carbonFrame.origin
+        var initialSize = carbonFrame.size
+        if let posVal = AXValueCreate(AXValueType.cgPoint, &initialPos) {
+            AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, posVal)
+        }
+        if let sizeVal = AXValueCreate(AXValueType.cgSize, &initialSize) {
+            AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeVal)
         }
         
         // Start a fast, aggressive cascade to pound the size/pos constraints
