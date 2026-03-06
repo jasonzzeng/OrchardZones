@@ -64,14 +64,8 @@ class ZoneManager {
             let computedHeight = relativeRect.height * screenRect.height
             
             // Inset the physical box by the configured padding
-            var zoneRect = CGRect(x: absoluteX, y: absoluteY, width: computedWidth, height: computedHeight)
+            let zoneRect = CGRect(x: absoluteX, y: absoluteY, width: computedWidth, height: computedHeight)
                 .insetBy(dx: padding / 2.0, dy: padding / 2.0)
-                
-            // Convert AppKit (bottom-left) to Carbon (top-left) coordinates for Accessibility API
-            // The primary screen's top-left is (0,0) in Accessibility API
-            let globalHeight = NSScreen.screens[0].frame.height
-            zoneRect.origin.y = globalHeight - zoneRect.origin.y - zoneRect.height
-            
             // DIAGNOSTICS FOR ELECTRON Vertical MONITOR BEHAVIOR
             let logPath = "/tmp/oz_zone_math.txt"
             let logMsg = """

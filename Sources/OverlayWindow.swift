@@ -63,11 +63,24 @@ class OverlayWindowManager {
             // Render zones
             if let window = overlayWindows[screen], let view = window.contentView as? OverlayView {
                 let zones = ZoneManager.shared.getZones(for: screen)
-                // Convert screen coordinates to window-local coordinates for the view
-                let localZones = zones.map { Zone(index: $0.index, rect: window.convertFromScreen($0.rect)) }
+                // Convert absolute screen coordinates to window-local coordinates manually
+                // This bypasses AppKit's convertFromScreen which gets confused by the menu bar `visibleFrame` difference
+                let screenOrigin = screen.frame.origin
                 
-                let localActiveZone = (screen == activeScreen && activeZone != nil) ?
-                    Zone(index: activeZone!.index, rect: window.convertFromScreen(activeZone!.rect)) : nil
+                let localZones = zones.map { zone -> Zone in
+                    var localRect = zone.rect
+                    localRect.origin.x -= screenOrigin.x
+                    localRect.origin.y -= screenOrigin.y
+                    return Zone(index: zone.index, rect: localRect)
+                }
+                
+                var localActiveZone: Zone? = nil
+                if screen == activeScreen, let active = activeZone {
+                    var localActiveRect = active.rect
+                    localActiveRect.origin.x -= screenOrigin.x
+                    localActiveRect.origin.y -= screenOrigin.y
+                    localActiveZone = Zone(index: active.index, rect: localActiveRect)
+                }
                     
                 view.update(zones: localZones, activeZone: localActiveZone)
                 window.orderFront(nil)

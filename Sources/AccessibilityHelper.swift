@@ -34,41 +34,38 @@ class AccessibilityHelper {
     // Sets the frame (position and size) of the given window
     // Assumes `carbonFrame` has already been translated from AppKit geometry
     static func setWindowFrame(_ window: AXUIElement, appKitFrame carbonFrame: CGRect) {
-        var position = carbonFrame.origin
-        var size = carbonFrame.size
+        /*
+         * Fix macOS bug!
+         * --------------
+         * macOS has a bug, when you move & resize a window downward across dual monitors, the window is not resized correctly.
+         * We briefly shrink the height by 10 pixels to bypass the validation rejection, and then snap to the final size.
+         */
+        if NSScreen.screens.count > 1 {
+            var sizeValue = CGSize(width: carbonFrame.size.width, height: carbonFrame.size.height - 10)
+            if let sizeAXValue = AXValueCreate(.cgSize, &sizeValue) {
+                AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeAXValue)
+            }
+        }
         
-        let positionValue = AXValueCreate(AXValueType.cgPoint, &position)!
-        let sizeValue = AXValueCreate(AXValueType.cgSize, &size)!
-        
-        // Initial force position
-        let posResult = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
-        
-        // Initial force size
-        let sizeResult = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
-        
-        // Start a fast, aggressive repeating timer to pound the size/pos constraints
+        // Start a fast, aggressive cascade to pound the size/pos constraints
         // Electron apps continuously fight resize commands during transition animations
-        var attempts = 0
-        let maxAttempts = 5
-        
-        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
-            attempts += 1
-            
-            var currentPos = carbonFrame.origin
-            var currentSize = carbonFrame.size
-            let posVal = AXValueCreate(AXValueType.cgPoint, &currentPos)!
-            let sizeVal = AXValueCreate(AXValueType.cgSize, &currentSize)!
-            
-            AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeVal)
-            AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, posVal)
-            
-            if attempts >= maxAttempts {
-                timer.invalidate()
+        let maxAttempts = 10
+        for i in 0..<maxAttempts {
+            DispatchQueue.main.asyncAfter(deadline: .now() + (0.05 * Double(i))) { [window, carbonFrame] in
+                var currentPos = carbonFrame.origin
+                var currentSize = carbonFrame.size
                 
-                // If Accessibility failed or was ignored, fallback to AppleScript bounds manipulation
-                // which often forcefully overrides Electron's internal restrictions
-                // Note: AppleScript also expects Carbon coordinates
-                fallbackToAppleScript(window: window, frame: carbonFrame)
+                if let posVal = AXValueCreate(AXValueType.cgPoint, &currentPos) {
+                    AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, posVal)
+                }
+                if let sizeVal = AXValueCreate(AXValueType.cgSize, &currentSize) {
+                    AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeVal)
+                }
+                
+                // On the final attempt, execute the AppleScript fallback directly if needed
+                if i == maxAttempts - 1 {
+                    fallbackToAppleScript(window: window, frame: carbonFrame)
+                }
             }
         }
     }
