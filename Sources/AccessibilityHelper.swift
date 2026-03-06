@@ -32,15 +32,8 @@ class AccessibilityHelper {
     }
     
     // Sets the frame (position and size) of the given window
-    static func setWindowFrame(_ window: AXUIElement, appKitFrame: CGRect) {
-        // Convert AppKit (bottom-left) to Carbon (top-left) coordinates for Accessibility API
-        // The primary screen's top-left is (0,0) in Accessibility API
-        var carbonFrame = appKitFrame
-        if let primaryScreen = NSScreen.screens.first {
-            let globalHeight = primaryScreen.frame.height
-            carbonFrame.origin.y = globalHeight - appKitFrame.origin.y - appKitFrame.size.height
-        }
-        
+    // Assumes `carbonFrame` has already been translated from AppKit geometry
+    static func setWindowFrame(_ window: AXUIElement, appKitFrame carbonFrame: CGRect) {
         var position = carbonFrame.origin
         var size = carbonFrame.size
         
