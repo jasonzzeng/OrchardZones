@@ -34,21 +34,71 @@ class AccessibilityHelper {
     // Sets the frame (position and size) of the given window
     static func setWindowFrame(_ window: AXUIElement, frame: CGRect) {
         var position = frame.origin
-        // Carbon coordinates for Accessibility: origin is top-left of the primary screen
-        // AppKit coordinates: origin is bottom-left of the primary screen.
-        // We assume 'frame' is passed in Accessibility coordinates (top-left).
-        if let positionValue = AXValueCreate(AXValueType.cgPoint, &position) {
-            AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
-        }
-        
         var size = frame.size
-        if let sizeValue = AXValueCreate(AXValueType.cgSize, &size) {
-            AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
-        }
         
-        // Sometimes setting the size changes position slightly depending on the anchor. We set position again to be sure.
-        if let positionValue = AXValueCreate(AXValueType.cgPoint, &position) {
-            AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
+        let positionValue = AXValueCreate(AXValueType.cgPoint, &position)!
+        let sizeValue = AXValueCreate(AXValueType.cgSize, &size)!
+        
+        // Initial force position
+        let posResult = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
+        
+        // Initial force size
+        let sizeResult = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+        
+        // Start a fast, aggressive repeating timer to pound the size/pos constraints
+        // Electron apps continuously fight resize commands during transition animations
+        var attempts = 0
+        let maxAttempts = 5
+        
+        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+            attempts += 1
+            
+            var currentPos = frame.origin
+            var currentSize = frame.size
+            let posVal = AXValueCreate(AXValueType.cgPoint, &currentPos)!
+            let sizeVal = AXValueCreate(AXValueType.cgSize, &currentSize)!
+            
+            AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeVal)
+            AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, posVal)
+            
+            if attempts >= maxAttempts {
+                timer.invalidate()
+                
+                // If Accessibility failed or was ignored, fallback to AppleScript bounds manipulation
+                // which often forcefully overrides Electron's internal restrictions
+                fallbackToAppleScript(window: window, frame: frame)
+            }
+        }
+    }
+    
+    // Gets the PID of the application owning the window, and uses AppleScript to forcefully resize it
+    static private func fallbackToAppleScript(window: AXUIElement, frame: CGRect) {
+        var pid: pid_t = 0
+        let error = AXUIElementGetPid(window, &pid)
+        guard error == .success else { return }
+        
+        if let app = NSRunningApplication(processIdentifier: pid), let bundleId = app.bundleIdentifier {
+            // Calculate absolute bottom-left AppKit bounds for AppleScript
+            let x = Int(frame.origin.x)
+            let y = Int(frame.origin.y)
+            let width = Int(frame.size.width)
+            let height = Int(frame.size.height)
+            
+            let scriptSource = """
+            tell application id "\(bundleId)"
+                set bounds of front window to {\(x), \(y), \(x + width), \(y + height)}
+            end tell
+            """
+            
+            DispatchQueue.global(qos: .userInitiated).async {
+                var error: NSDictionary?
+                if let scriptObject = NSAppleScript(source: scriptSource) {
+                    scriptObject.executeAndReturnError(&error)
+                    if let err = error {
+                        print("AppleScript fallback failed for \(bundleId): \(err)")
+                    }
+                }
+            }
         }
     }
     
